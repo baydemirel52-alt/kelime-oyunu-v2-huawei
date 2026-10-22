@@ -51,7 +51,14 @@ jobs:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: gradle assembleRelease bundleRelease --stacktrace
+        run: |
+          set +e
+          gradle assembleRelease bundleRelease --stacktrace 2>&1 | tee build.log
+          code=${PIPESTATUS[0]}
+          if [ $code -ne 0 ]; then
+            grep -E "^e: |error:|What went wrong|Could not|Unresolved|Execution failed" -A3 build.log | head -30 | sed 's/^/::error::/'
+          fi
+          exit $code
 
       - name: Huawei AppGallery Release APK Yukle
         uses: actions/upload-artifact@v4
