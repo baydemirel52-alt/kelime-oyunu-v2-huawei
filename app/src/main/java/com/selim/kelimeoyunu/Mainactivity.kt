@@ -104,7 +104,7 @@ import com.huawei.hms.ads.AdListener
 import com.huawei.hms.ads.AdParam
 import com.huawei.hms.ads.HwAds
 import com.huawei.hms.ads.InterstitialAd
-import com.huawei.hms.ads.banner.BannerAdSize
+import com.huawei.hms.ads.BannerAdSize
 import com.huawei.hms.ads.banner.BannerView
 import com.huawei.hms.ads.reward.Reward
 import com.huawei.hms.ads.reward.RewardAd
