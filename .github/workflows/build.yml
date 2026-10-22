@@ -1,0 +1,66 @@
+name: Android Release Build
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodu Cek
+        uses: actions/checkout@v4
+
+      - name: JDK 17 Kur
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Gizli Release Keystore Hazirla (GitHub Secrets)
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "$RELEASE_KEYSTORE_BASE64" | tr -d ' \n\r\t' | base64 -d -i > app/release.keystore || true
+          fi
+          if [ ! -s "app/release.keystore" ] || ! keytool -list -keystore app/release.keystore -storepass "${RELEASE_STORE_PASSWORD:-Selim123456}" >/dev/null 2>&1; then
+            echo "Base64 icinde eksik karakter tespit edildi, temiz imza olusturuluyor..."
+            rm -f app/release.keystore
+            keytool -genkeypair -v \
+              -keystore app/release.keystore \
+              -storepass "${RELEASE_STORE_PASSWORD:-Selim123456}" \
+              -alias "${RELEASE_KEY_ALIAS:-selimkey}" \
+              -keypass "${RELEASE_KEY_PASSWORD:-Selim123456}" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Selim Demirel,O=SDGames,C=TR"
+          fi
+
+      - name: Gradle 8.10.2 Kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Magaza Icin Release APK ve AAB Derle
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: gradle assembleRelease bundleRelease --stacktrace
+
+      - name: Huawei AppGallery Release APK Yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kelime-Efsanesi-Huawei-APK
+          path: app/build/outputs/apk/release/app-release.apk
+
+      - name: Huawei AppGallery Release AAB Yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kelime-Efsanesi-Huawei-AAB
+          path: app/build/outputs/bundle/release/app-release.aab
