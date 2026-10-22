@@ -1387,7 +1387,7 @@ fun MainMenuScreen(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             MenuBannerAdView()
             Spacer(Modifier.height(4.dp))
-            Text("Galaxy Store & Play Edition • v$versionName", color = Color.White.copy(alpha = 0.35f), fontSize = 10.sp)
+            Text("Huawei AppGallery Edition • v$versionName", color = Color.White.copy(alpha = 0.35f), fontSize = 10.sp)
         }
     }
 }
