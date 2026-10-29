@@ -64,6 +64,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
 
-    // Huawei Petal Ads (HMS Ads Kit)
-    implementation("com.huawei.hms:ads-lite:13.4.67.302")
+    // Bu surumde reklam yok. Reklam eklenecegi zaman: git etiketi "reklamli-surum" icindeki kodu geri getir
+    // ve su satiri ac: implementation("com.huawei.hms:ads-lite:13.4.67.302")
 }

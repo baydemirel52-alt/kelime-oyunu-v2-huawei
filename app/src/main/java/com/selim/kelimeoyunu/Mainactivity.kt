@@ -96,20 +96,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.huawei.hms.ads.AdListener
-import com.huawei.hms.ads.AdParam
-import com.huawei.hms.ads.HwAds
-import com.huawei.hms.ads.InterstitialAd
-import com.huawei.hms.ads.BannerAdSize
-import com.huawei.hms.ads.banner.BannerView
-import com.huawei.hms.ads.reward.Reward
-import com.huawei.hms.ads.reward.RewardAd
-import com.huawei.hms.ads.reward.RewardAdLoadListener
-import com.huawei.hms.ads.reward.RewardAdStatusListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -119,7 +108,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.exp
@@ -127,194 +115,38 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
-    private lateinit var adsManager: PetalAdsManager
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         loadWordLists(applicationContext)
-        adsManager = PetalAdsManager(this)
-        adsManager.initAds()
         setContent {
             MaterialTheme {
-                WordGameApp(adsManager = adsManager, onExitApp = { finish() })
+                WordGameApp(onExitApp = { finish() })
             }
         }
     }
 }
 
 // ==========================================
-// 0. HUAWEI PETAL ADS (HMS ADS KIT) YONETICISI (RESMI TEST KIMLIKLERI)
+// 0. YARDIMCI FONKSIYONLAR (Bu surumde reklam yok)
+// Reklamli surum icin git etiketi: reklamli-surum
 // ==========================================
-class PetalAdsManager(private val activity: Activity) {
-    companion object {
-        // Huawei Resmi Test Reklam Birimi Kimlikleri (Magazaya cikarken Petal Ads panelindeki kendi ID'lerinle degisecek)
-        const val TEST_BANNER_ID = "testw6vs28auh3"
-        const val TEST_INTERSTITIAL_ID = "testb4znbuh3n2"
-        const val TEST_REWARDED_ID = "testx9dtjwj8hp"
-        const val CONTACT_EMAIL = "baydemirel52@gmail.com"
-    }
+const val CONTACT_EMAIL = "baydemirel52@gmail.com"
 
-    private var interstitialAd: InterstitialAd? = null
-    private var rewardedAd: RewardAd? = null
-    private var interstitialLoading = false
-    private var rewardedLoading = false
-    private var lastInterstitialTimeMs: Long = 0L
-    var isRewardedLoaded by mutableStateOf(false)
-        private set
-
-    // Tam ekran reklam acikken zamana karsi yaris sayaci durur
-    var isAdShowing by mutableStateOf(false)
-        private set
-
-    // Huawei surumunde onay formu yok (kisisellestirilmemis reklam), bu yuzden Ayarlar'da buton gosterilmez
-    val privacyOptionsRequired: Boolean = false
-
-    // HwAds.init en fazla bir kez cagrilsin
-    private val adsInitStarted = AtomicBoolean(false)
-
-    fun initAds() {
-        if (!adsInitStarted.compareAndSet(false, true)) return
-        HwAds.init(activity)
-        // Tum bolgelerde onay gerektirmeyen guvenli mod: yalnizca kisisellestirilmemis reklam istenir
-        HwAds.setRequestOptions(
-            HwAds.getRequestOptions().toBuilder().setNonPersonalizedAd(1).build()
-        )
-        loadInterstitial()
-        loadRewarded()
-    }
-
-    // Google surumundeki "Reklam Tercihleri" butonunun karsiligi yok (privacyOptionsRequired hep false)
-    fun showPrivacyOptions() {}
-
-    fun loadInterstitial() {
-        if (!adsInitStarted.get() || interstitialLoading) return
-        interstitialLoading = true
-        val ad = InterstitialAd(activity)
-        ad.adId = TEST_INTERSTITIAL_ID
-        ad.adListener = object : AdListener() {
-            override fun onAdLoaded() {
-                interstitialLoading = false
-                interstitialAd = ad
-            }
-            override fun onAdFailed(errorCode: Int) {
-                interstitialLoading = false
-                interstitialAd = null
-            }
-        }
-        ad.loadAd(AdParam.Builder().build())
-    }
-
-    fun loadRewarded() {
-        if (!adsInitStarted.get() || rewardedLoading) return
-        rewardedLoading = true
-        val ad = RewardAd(activity, TEST_REWARDED_ID)
-        ad.loadAd(AdParam.Builder().build(), object : RewardAdLoadListener() {
-            override fun onRewardedLoaded() {
-                rewardedLoading = false
-                rewardedAd = ad
-                isRewardedLoaded = true
-            }
-            override fun onRewardAdFailedToLoad(errorCode: Int) {
-                rewardedLoading = false
-                rewardedAd = null
-                isRewardedLoaded = false
-            }
-        })
-    }
-
-    // Ilk 5 bolumde cikmaz, sonrasinda en az 3 dakika (180.000 ms) arayla cikar
-    fun maybeShowInterstitial(completedLevel: Int, onFinished: () -> Unit) {
-        val now = System.currentTimeMillis()
-        val minIntervalMs = 3 * 60 * 1000L
-        val ad = interstitialAd
-        if (completedLevel > 5 && ad != null && ad.isLoaded && (now - lastInterstitialTimeMs >= minIntervalMs)) {
-            ad.adListener = object : AdListener() {
-                override fun onAdOpened() {
-                    isAdShowing = true
-                }
-                override fun onAdClosed() {
-                    isAdShowing = false
-                    interstitialAd = null
-                    lastInterstitialTimeMs = System.currentTimeMillis()
-                    loadInterstitial()
-                    onFinished()
-                }
-                override fun onAdFailed(errorCode: Int) {
-                    isAdShowing = false
-                    interstitialAd = null
-                    loadInterstitial()
-                    onFinished()
-                }
-            }
-            ad.show(activity)
-        } else {
-            if (ad == null) loadInterstitial()
-            onFinished()
-        }
-    }
-
-    fun showRewardedAd(onRewardEarned: () -> Unit, onNotReady: () -> Unit) {
-        val ad = rewardedAd
-        if (ad == null || !ad.isLoaded) {
-            rewardedAd = null
-            isRewardedLoaded = false
-            loadRewarded()
-            onNotReady()
-            return
-        }
-        var earned = false
-        isAdShowing = true
-        ad.show(activity, object : RewardAdStatusListener() {
-            override fun onRewarded(reward: Reward) {
-                earned = true
-            }
-            override fun onRewardAdClosed() {
-                isAdShowing = false
-                rewardedAd = null
-                isRewardedLoaded = false
-                loadRewarded()
-                if (earned) onRewardEarned()
-            }
-            override fun onRewardAdFailedToShow(errorCode: Int) {
-                isAdShowing = false
-                rewardedAd = null
-                isRewardedLoaded = false
-                loadRewarded()
-                onNotReady()
-            }
-        })
-    }
-
-    // Gizlilik politikasindaki iletisim e-postasi (mail uygulamasini acar)
-    fun openContactEmail() {
-        try {
-            val uri = Uri.parse("mailto:" + CONTACT_EMAIL + "?subject=" + Uri.encode("Kelime Efsanesi"))
-            activity.startActivity(Intent(Intent.ACTION_SENDTO, uri))
-        } catch (_: Exception) {}
-    }
+// Gizlilik politikasindaki iletisim e-postasi (mail uygulamasini acar)
+fun openContactEmail(context: Context) {
+    try {
+        val uri = Uri.parse("mailto:" + CONTACT_EMAIL + "?subject=" + Uri.encode("Kelime Efsanesi"))
+        val intent = Intent(Intent.ACTION_SENDTO, uri)
+        if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    } catch (_: Exception) {}
 }
 
 // Gunluk cark icin yerel saate gore gun numarasi (gece yarisi sifirlanir)
 fun currentDayNumber(): Int {
     val now = System.currentTimeMillis()
     return ((now + java.util.TimeZone.getDefault().getOffset(now)) / 86_400_000L).toInt()
-}
-
-@Composable
-fun MenuBannerAdView() {
-    AndroidView(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp),
-        factory = { ctx ->
-            BannerView(ctx).apply {
-                adId = PetalAdsManager.TEST_BANNER_ID
-                bannerAdSize = BannerAdSize.BANNER_SIZE_320_50
-                loadAd(AdParam.Builder().build())
-            }
-        }
-    )
 }
 
 // ==========================================
@@ -979,7 +811,7 @@ private fun canPlaceWord(grid: Array<CharArray>, word: String, r: Int, c: Int, i
 enum class Screen { MENU, GAME }
 
 @Composable
-fun WordGameApp(adsManager: PetalAdsManager, onExitApp: () -> Unit) {
+fun WordGameApp(onExitApp: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("kelime_efsanesi_prefs", Context.MODE_PRIVATE) }
     val soundEngine = remember { ProceduralSoundEngine(context.applicationContext) }
@@ -1002,7 +834,7 @@ fun WordGameApp(adsManager: PetalAdsManager, onExitApp: () -> Unit) {
     var sfxEnabled by remember { mutableStateOf(prefs.getBoolean("sfx", true)) }
     var highGraphics by remember { mutableStateOf(prefs.getBoolean("graphics", true)) }
 
-    // Gunluk Cark Siniri (Gunde 1 Ucretsiz + En Fazla 2 Reklamli = Toplam 3 Hak)
+    // Gunluk Cark Siniri (Gunde 3 ucretsiz hak)
     val todayDayNumber = remember { currentDayNumber() }
     var lastSpinDay by remember { mutableIntStateOf(prefs.getInt("spin_day", -1)) }
     var spinsUsedToday by remember {
@@ -1094,7 +926,6 @@ fun WordGameApp(adsManager: PetalAdsManager, onExitApp: () -> Unit) {
                         freeHammers = freeHammers,
                         worldTheme = worldTheme,
                         soundEngine = soundEngine,
-                        adsManager = adsManager,
                         onUpdateEconomy = { newGold, newJar, newHammers ->
                             gold = newGold
                             bonusJarCount = newJar
@@ -1102,12 +933,9 @@ fun WordGameApp(adsManager: PetalAdsManager, onExitApp: () -> Unit) {
                             saveState()
                         },
                         onLevelCompleted = { earnedGold ->
-                            val finishedLvl = currentLevel
                             gold += earnedGold
                             currentLevel = if (currentLevel < 300) currentLevel + 1 else 1
                             saveState()
-                            // Ilk 5 bolumde cikmaz, sonrasinda en az 3 dk arayla gecis reklami gosterir
-                            adsManager.maybeShowInterstitial(finishedLvl) {}
                         },
                         onOpenSpinWheel = { soundEngine.playClick(); showSpinWheelDialog = true },
                         onOpenMuseum = { soundEngine.playClick(); showMuseumDialog = true },
@@ -1150,7 +978,6 @@ fun WordGameApp(adsManager: PetalAdsManager, onExitApp: () -> Unit) {
                 lang = lang,
                 spinsUsedToday = spinsUsedToday,
                 soundEngine = soundEngine,
-                adsManager = adsManager,
                 onPrizeWon = { goldDelta, hammerDelta ->
                     gold = (gold + goldDelta).coerceAtLeast(0)
                     freeHammers += hammerDelta
@@ -1182,12 +1009,7 @@ fun WordGameApp(adsManager: PetalAdsManager, onExitApp: () -> Unit) {
                 onToggleGraphics = { soundEngine.playClick(); highGraphics = !highGraphics; saveState() },
                 onContactEmail = {
                     soundEngine.playClick()
-                    adsManager.openContactEmail()
-                },
-                privacyOptionsRequired = adsManager.privacyOptionsRequired,
-                onOpenPrivacyOptions = {
-                    soundEngine.playClick()
-                    adsManager.showPrivacyOptions()
+                    openContactEmail(context)
                 },
                 onResetProgress = {
                     soundEngine.playClick()
@@ -1383,10 +1205,7 @@ fun MainMenuScreen(
             MenuButton(if (lang == Lang.TR) "🚪  ÇIKIŞ YAP" else "🚪  EXIT GAME", listOf(Color(0xFFEF4444), Color(0xFFB91C1C)), 46.dp, 14, onExit)
         }
 
-        // Sadece Ana Menude Banner Reklam (Oyun icinde carkin yaninda yanlislikla tiklanmamasi icin)
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            MenuBannerAdView()
-            Spacer(Modifier.height(4.dp))
             Text("Huawei AppGallery Edition • v$versionName", color = Color.White.copy(alpha = 0.35f), fontSize = 10.sp)
         }
     }
@@ -1414,7 +1233,6 @@ fun GameplayScreen(
     freeHammers: Int,
     worldTheme: WorldTheme,
     soundEngine: ProceduralSoundEngine,
-    adsManager: PetalAdsManager,
     onUpdateEconomy: (Int, Int, Int) -> Unit,
     onLevelCompleted: (Int) -> Unit,
     onOpenSpinWheel: () -> Unit,
@@ -1541,8 +1359,7 @@ fun GameplayScreen(
         if (puzzle.isTimeAttack && !showWinDialog && !isTimeOut) {
             while (remainingSeconds > 0 && !allBoardCellsOpen) {
                 delay(1000)
-                // Tam ekran reklam acikken sure akmaz
-                if (!adsManager.isAdShowing) remainingSeconds--
+                remainingSeconds--
             }
             if (remainingSeconds <= 0 && !allBoardCellsOpen) {
                 isTimeOut = true
@@ -1681,27 +1498,6 @@ fun GameplayScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFF1E293B), border = BorderStroke(1.dp, Color(0xFFFBBF24))) {
                             Text("🪙$gold", color = Color(0xFFFBBF24), fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
-                        }
-                        // Odullu Reklam ile +50 Altin Destek Butonu
-                        Surface(
-                            onClick = {
-                                soundEngine.playClick()
-                                adsManager.showRewardedAd(
-                                    onRewardEarned = {
-                                        soundEngine.playLevelWin()
-                                        onUpdateEconomy(gold + 50, bonusJarCount, freeHammers)
-                                        praisePopup = if (lang == Lang.TR) "🎬 REKLAM ÖDÜLÜ: +50 🪙!" else "🎬 AD REWARD: +50 🪙!"
-                                    },
-                                    onNotReady = {
-                                        feedbackBanner = if (lang == Lang.TR) "⏳ Reklam yükleniyor, birkaç saniye sonra tekrar dene!" else "⏳ Ad loading, try again in a moment!"
-                                    }
-                                )
-                            },
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFF065F46),
-                            border = BorderStroke(1.dp, Color(0xFF34D399))
-                        ) {
-                            Text("🎬+50", color = Color(0xFFA7F3D0), fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp))
                         }
                         IconButton(onClick = onOpenSettings, modifier = Modifier.size(34.dp).background(Color.White.copy(alpha = 0.12f), CircleShape)) {
                             Text("⚙️", fontSize = 14.sp)
@@ -1895,7 +1691,7 @@ fun GameplayScreen(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // Ipucu: Altin yetmezse Odullu Reklam ile bedava Ipucu verir!
+                    // Ipucu: 50 altin
                     Surface(
                         onClick = {
                             val unrevealed = cellMap.filter { !it.value.second }.keys.toList()
@@ -1906,18 +1702,8 @@ fun GameplayScreen(
                                 revealedCells = revealedCells + unrevealed.random()
                                 breakBossSealIfNeeded()
                             } else {
-                                soundEngine.playClick()
-                                adsManager.showRewardedAd(
-                                    onRewardEarned = {
-                                        soundEngine.playWordSuccess()
-                                        revealedCells = revealedCells + unrevealed.random()
-                                        breakBossSealIfNeeded()
-                                    },
-                                    onNotReady = {
-                                        soundEngine.playError()
-                                        feedbackBanner = if (lang == Lang.TR) "İpucu için 50 🪙 gerekir (Reklam henüz hazır değil)!" else "Need 50 🪙!"
-                                    }
-                                )
+                                soundEngine.playError()
+                                feedbackBanner = if (lang == Lang.TR) "İpucu için 50 🪙 gerekir!" else "Need 50 🪙!"
                             }
                         },
                         shape = RoundedCornerShape(14.dp),
@@ -1927,11 +1713,11 @@ fun GameplayScreen(
                         Row(modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("💡", fontSize = 14.sp)
                             Spacer(Modifier.width(4.dp))
-                            Text(if (gold >= 50) "50" else "🎬", color = Color(0xFFFBBF24), fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                            Text("50", color = Color(0xFFFBBF24), fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
                         }
                     }
 
-                    // Cekic: Altin yetmezse Odullu Reklam ile +1 Bedava Cekic verir!
+                    // Cekic: 80 altin (veya bedava cekic hakki)
                     Surface(
                         onClick = {
                             if (isHammerMode) {
@@ -1941,18 +1727,8 @@ fun GameplayScreen(
                                 soundEngine.playClick()
                                 isHammerMode = true
                             } else {
-                                soundEngine.playClick()
-                                adsManager.showRewardedAd(
-                                    onRewardEarned = {
-                                        soundEngine.playLevelWin()
-                                        onUpdateEconomy(gold, bonusJarCount, freeHammers + 1)
-                                        isHammerMode = true
-                                    },
-                                    onNotReady = {
-                                        soundEngine.playError()
-                                        feedbackBanner = if (lang == Lang.TR) "Çekiç için 80 🪙 gerekir (Reklam henüz hazır değil)!" else "Need 80 🪙!"
-                                    }
-                                )
+                                soundEngine.playError()
+                                feedbackBanner = if (lang == Lang.TR) "Çekiç için 80 🪙 gerekir!" else "Need 80 🪙!"
                             }
                         },
                         shape = RoundedCornerShape(14.dp),
@@ -1963,7 +1739,7 @@ fun GameplayScreen(
                             Text("🔨", fontSize = 14.sp)
                             Spacer(Modifier.width(4.dp))
                             Text(
-                                text = if (freeHammers > 0) "x$freeHammers" else if (gold >= 80) "80" else "🎬",
+                                text = if (freeHammers > 0) "x$freeHammers" else "80",
                                 color = if (isHammerMode) Color.Black else Color(0xFFFDBA74),
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 12.sp
@@ -2093,31 +1869,39 @@ fun GameplayScreen(
                     Spacer(Modifier.height(8.dp))
                     Text(if (lang == Lang.TR) "SÜRE DOLDU!" else "TIME'S UP!", color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp)
                     Spacer(Modifier.height(14.dp))
+                    val continueCost = 40
+                    val canAffordContinue = gold >= continueCost
                     MenuButton(
-                        text = if (lang == Lang.TR) "🎬 Reklam İzle (+30 Sn Ekle)" else "🎬 Watch Ad (+30s)",
-                        gradient = listOf(Color(0xFF10B981), Color(0xFF059669)),
+                        text = if (lang == Lang.TR) "⏱️ +30 Sn Devam Et ($continueCost 🪙)" else "⏱️ +30s Continue ($continueCost 🪙)",
+                        gradient = if (canAffordContinue) listOf(Color(0xFF10B981), Color(0xFF059669)) else listOf(Color(0xFF475569), Color(0xFF334155)),
                         height = 48.dp,
                         fontSize = 14
                     ) {
+                        if (canAffordContinue) {
+                            soundEngine.playClick()
+                            onUpdateEconomy(gold - continueCost, bonusJarCount, freeHammers)
+                            remainingSeconds = 30
+                            isTimeOut = false
+                        } else {
+                            soundEngine.playError()
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    MenuButton(
+                        text = if (lang == Lang.TR) "🏠 Menüye Dön" else "🏠 Back to Menu",
+                        gradient = listOf(Color(0xFFEF4444), Color(0xFFB91C1C)),
+                        height = 44.dp,
+                        fontSize = 14
+                    ) {
                         soundEngine.playClick()
-                        adsManager.showRewardedAd(
-                            onRewardEarned = {
-                                remainingSeconds = 30
-                                isTimeOut = false
-                            },
-                            onNotReady = {
-                                // Test sirasinda reklam henuz yuklenmediyse oyuncuyu magdur etmemek icin verir
-                                remainingSeconds = 30
-                                isTimeOut = false
-                            }
-                        )
+                        onBackToMenu()
                     }
                 }
             }
         }
     }
 
-    // BOLUM SONU EKRANI (ODULU 2'YE KATLAMA REKLAM BUTONU ILE)
+    // BOLUM SONU EKRANI
     if (showWinDialog) {
         val monumentCompleteBonus = if (level % 10 == 0) 150 else 0
         val baseTotal = 30 + (if (puzzle.isTimeAttack) remainingSeconds * 2 else 0) + (if (puzzle.isBossLevel) 80 else 0) + monumentCompleteBonus
@@ -2163,27 +1947,6 @@ fun GameplayScreen(
 
                         Spacer(Modifier.height(12.dp))
 
-                        if (!winRewardDoubled) {
-                            MenuButton(
-                                text = if (lang == Lang.TR) "🎬 REKLAM İZLE -> ÖDÜLÜ 2'YE KATLA (+${baseTotal * 2} 🪙)" else "🎬 WATCH AD -> 2x REWARD (+${baseTotal * 2} 🪙)",
-                                gradient = listOf(Color(0xFFF59E0B), Color(0xFFD97706)),
-                                height = 46.dp,
-                                fontSize = 13
-                            ) {
-                                soundEngine.playClick()
-                                adsManager.showRewardedAd(
-                                    onRewardEarned = {
-                                        soundEngine.playLevelWin()
-                                        winRewardDoubled = true
-                                    },
-                                    onNotReady = {
-                                        feedbackBanner = if (lang == Lang.TR) "⏳ Reklam henüz hazır değil!" else "⏳ Ad not ready yet!"
-                                    }
-                                )
-                            }
-                            Spacer(Modifier.height(8.dp))
-                        }
-
                         MenuButton(if (lang == Lang.TR) "SEVİYE ${level + 1}'E GEÇ ➔" else "CONTINUE TO LEVEL ${level + 1} ➔", listOf(Color(0xFF10B981), Color(0xFF059669)), 48.dp, 15) {
                             soundEngine.playClick()
                             showWinDialog = false
@@ -2204,7 +1967,6 @@ fun SpinWheelDialog(
     lang: Lang,
     spinsUsedToday: Int,
     soundEngine: ProceduralSoundEngine,
-    adsManager: PetalAdsManager,
     onPrizeWon: (Int, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -2217,7 +1979,6 @@ fun SpinWheelDialog(
 
     val maxDailySpins = 3
     val remainingSpins = (maxDailySpins - spinsUsedToday).coerceAtLeast(0)
-    val isFirstFreeSpin = (spinsUsedToday == 0)
 
     val animatedAngle by animateFloatAsState(
         targetValue = targetAngle,
@@ -2296,8 +2057,7 @@ fun SpinWheelDialog(
                     text = when {
                         isSpinning -> if (lang == Lang.TR) "ÇARK DÖNÜYOR..." else "SPINNING..."
                         remainingSpins <= 0 -> if (lang == Lang.TR) "⏳ GÜNLÜK HAKKIN DOLDU (Yarın Gel)" else "⏳ DAILY LIMIT REACHED"
-                        isFirstFreeSpin -> if (lang == Lang.TR) "ÜCRETSİZ ÇEVİR! (1/1) 🎰" else "FREE SPIN! (1/1) 🎰"
-                        else -> if (lang == Lang.TR) "🎬 REKLAM İZLE & ÇEVİR ($remainingSpins Hak)" else "🎬 WATCH AD TO SPIN ($remainingSpins Left)"
+                        else -> if (lang == Lang.TR) "ÜCRETSİZ ÇEVİR! ($remainingSpins Hak) 🎰" else "FREE SPIN! ($remainingSpins Left) 🎰"
                     },
                     gradient = if (remainingSpins > 0) listOf(Color(0xFF10B981), Color(0xFF059669)) else listOf(Color(0xFF475569), Color(0xFF334155)),
                     height = 48.dp,
@@ -2308,16 +2068,7 @@ fun SpinWheelDialog(
                         return@MenuButton
                     }
                     soundEngine.playClick()
-                    if (isFirstFreeSpin) {
-                        startSpinAnimation()
-                    } else {
-                        adsManager.showRewardedAd(
-                            onRewardEarned = { startSpinAnimation() },
-                            onNotReady = {
-                                resultText = if (lang == Lang.TR) "⏳ Reklam yükleniyor, birkaç saniye sonra tekrar bas!" else "⏳ Ad loading, try again in a moment!"
-                            }
-                        )
-                    }
+                    startSpinAnimation()
                 }
                 Spacer(Modifier.height(8.dp))
                 TextButton(onClick = { if (!isSpinning) onDismiss() }) {
@@ -2541,8 +2292,6 @@ fun SettingsDialog(
     onToggleSfx: () -> Unit,
     onToggleGraphics: () -> Unit,
     onContactEmail: () -> Unit,
-    privacyOptionsRequired: Boolean,
-    onOpenPrivacyOptions: () -> Unit,
     onResetProgress: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -2563,17 +2312,6 @@ fun SettingsDialog(
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
                     )
-                }
-
-                if (privacyOptionsRequired) {
-                    TextButton(onClick = onOpenPrivacyOptions, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = if (lang == Lang.TR) "🛡️ Reklam Tercihleri (Onay Ayarları)" else "🛡️ Ad Privacy Choices",
-                            color = Color(0xFF38BDF8),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    }
                 }
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
@@ -2603,33 +2341,33 @@ fun SettingRow(title: String, checked: Boolean, onToggle: () -> Unit) {
 // 12. UYGULAMA ICI GIZLILIK POLITIKASI (TR / EN) - e-posta ile iletisim
 // ==========================================
 private val PRIVACY_TR_TITLE = """Gizlilik Politikası"""
-private val PRIVACY_TR_UPDATED = """Son güncelleme: 22 Ekim 2026"""
+private val PRIVACY_TR_UPDATED = """Son güncelleme: 29 Ekim 2026"""
 private val PRIVACY_TR_INTRO = """Kelime Efsanesi ("Uygulama"), bağımsız geliştirici Selim tarafından geliştirilmiştir. Bu politika, Uygulama'yı kullanırken hangi bilgilerin işlendiğini ve haklarınızı açıklar."""
 private val PRIVACY_TR_SECTIONS: List<Pair<String, String>> = listOf(
     """1. Hesap ve kişisel bilgiler""" to """Uygulamayı kullanmak için hesap açmanız gerekmez. Adınızı, e-posta adresinizi, telefon numaranızı, konumunuzu, kişi listenizi, fotoğraflarınızı, kameranızı veya mikrofonunuzu istemeyiz ve toplamayız. Geliştirici olarak sunucularımızda sizinle ilgili kişisel veri tutmayız.""",
     """2. Oyun verileriniz""" to """Seviyeniz, altınınız, ayarlarınız ve günlük çark hakkınız yalnızca cihazınızda saklanır, bize gönderilmez. Uygulamayı kaldırdığınızda veya Ayarlar'daki "İlerlemeyi Sıfırla" düğmesine bastığınızda silinir.""",
-    """3. Reklamlar (Huawei Petal Ads)""" to """Uygulama, reklam göstermek için Huawei Petal Ads (HMS Ads Kit) hizmetini kullanır. Reklamları göstermek, ölçmek ve kötüye kullanımı önlemek amacıyla Huawei; anonim cihaz kimliğinizi (OAID), IP adresinizi, cihaz ve işletim sistemi bilgilerinizi, uygulama kullanımı ve reklam etkileşimi verilerinizi ve IP adresinden türetilen yaklaşık konumunuzu işleyebilir. Bu veriler Huawei tarafından işlenir ve Huawei'nin (Huawei Ads) gizlilik bildirimi geçerlidir.""",
-    """4. Reklam tercihleriniz""" to """Uygulama yalnızca kişiselleştirilmemiş reklam ister; yani reklamlar ilgi alanı profilinize göre kişiselleştirilmez. Cihazınızın gizlilik ayarlarından reklam kimliğinizi (OAID) sıfırlayabilir veya reklam kişiselleştirmesini kapatabilirsiniz.""",
-    """5. İzinler""" to """Uygulama yalnızca reklamların yüklenmesi için internet erişimi ve ağ durumu izinlerini kullanır. Konum, kişiler, kamera, mikrofon veya depolama izni istemez.""",
+    """3. Reklamlar""" to """Uygulama şu anda reklam göstermez ve reklam, analiz (analytics) veya kullanıcı takibi yapan hiçbir üçüncü taraf hizmet içermez. İleride reklam eklenirse bu politika önce güncellenir ve kullanılan hizmet burada açıkça belirtilir.""",
+    """4. Cihaz kimlikleri""" to """Uygulama reklam kimliği (OAID/GAID), IMEI veya benzeri bir cihaz kimliğini okumaz ve saklamaz.""",
+    """5. İzinler""" to """Uygulama internet erişimi dahil hiçbir izin istemez ve çevrimdışı çalışır. Konum, kişiler, kamera, mikrofon veya depolama izni de istemez.""",
     """6. Çocuklar""" to """Uygulama 13 yaşın altındaki çocuklara yönelik değildir ve bu yaştaki çocuklardan bilerek veri toplamayız.""",
-    """7. Veri paylaşımı""" to """Kişisel verilerinizi satmayız ve reklam ortağımız Huawei dışında kimseyle paylaşmayız.""",
-    """8. Haklarınız""" to """6698 sayılı KVKK ve (Avrupa'daysanız) GDPR kapsamında verilerinizle ilgili bilgi isteme, düzeltme, silme ve itiraz etme haklarına sahipsiniz. Oyun verileriniz yalnızca cihazınızda olduğundan çoğu işlemi doğrudan cihazınızdan yapabilirsiniz; reklam verileriyle ilgili talepleriniz için Huawei'ye veya bize e-postayla ulaşabilirsiniz.""",
+    """7. Veri paylaşımı""" to """Kişisel verilerinizi toplamadığımız için satmaz ve kimseyle paylaşmayız.""",
+    """8. Haklarınız""" to """6698 sayılı KVKK ve (Avrupa'daysanız) GDPR kapsamında verilerinizle ilgili bilgi isteme, düzeltme, silme ve itiraz etme haklarına sahipsiniz. Oyun verileriniz yalnızca cihazınızda olduğundan bunları doğrudan cihazınızdan silebilirsiniz; başka bir talebiniz olursa bize e-postayla ulaşabilirsiniz.""",
     """9. Değişiklikler""" to """Bu politikayı zaman zaman güncelleyebiliriz. Güncel sürüm Uygulama'nın Ayarlar bölümünde ve bu sayfada yayınlanır; son güncelleme tarihi yukarıda yazar.""",
     """10. İletişim""" to """Soru, talep ve şikayetleriniz için: baydemirel52@gmail.com"""
 )
 
 private val PRIVACY_EN_TITLE = """Privacy Policy"""
-private val PRIVACY_EN_UPDATED = """Last updated: 22 October 2026"""
+private val PRIVACY_EN_UPDATED = """Last updated: 29 October 2026"""
 private val PRIVACY_EN_INTRO = """Kelime Efsanesi (the "App") is developed by Selim, an independent developer. This policy explains what information is processed when you use the App, and your rights."""
 private val PRIVACY_EN_SECTIONS: List<Pair<String, String>> = listOf(
     """1. Account and personal information""" to """You do not need an account to use the App. We do not ask for or collect your name, email address, phone number, location, contacts, photos, camera or microphone. As the developer, we do not keep personal data about you on our servers.""",
     """2. Your game data""" to """Your level, gold, settings and daily spin count are stored only on your device and are never sent to us. They are deleted when you uninstall the App or tap "Reset Save" in Settings.""",
-    """3. Ads (Huawei Petal Ads)""" to """The App uses Huawei Petal Ads (HMS Ads Kit) to show ads. To serve and measure ads and prevent abuse, Huawei may process your anonymous device identifier (OAID), IP address, device and operating system information, app usage and ad interaction data, and an approximate location derived from your IP address. This data is processed by Huawei and Huawei's (Huawei Ads) privacy statement applies.""",
-    """4. Your ad choices""" to """The App only requests non-personalized ads, meaning ads are not personalized to an interest profile about you. You can reset your advertising identifier (OAID) or turn off ad personalization in your device's privacy settings.""",
-    """5. Permissions""" to """The App only uses internet access and network state permissions, so that ads can load. It does not request location, contacts, camera, microphone or storage permissions.""",
+    """3. Ads""" to """The App does not currently show ads and contains no third-party advertising, analytics or user-tracking services. If ads are added in the future, this policy will be updated first and the service used will be named here.""",
+    """4. Device identifiers""" to """The App does not read or store an advertising ID (OAID/GAID), IMEI or any similar device identifier.""",
+    """5. Permissions""" to """The App requests no permissions at all, including internet access, and works offline. It does not request location, contacts, camera, microphone or storage permissions either.""",
     """6. Children""" to """The App is not directed at children under 13, and we do not knowingly collect data from children of that age.""",
-    """7. Data sharing""" to """We do not sell your personal data and do not share it with anyone other than our ad partner Huawei.""",
-    """8. Your rights""" to """Under Turkish KVKK (Law No. 6698) and, if you are in Europe, the GDPR, you have the right to request information about, correct, delete and object to the processing of your data. Because your game data exists only on your device, you can do most of this directly on your device; for requests about ad data, contact Huawei or email us.""",
+    """7. Data sharing""" to """Because we do not collect your personal data, we do not sell or share it with anyone.""",
+    """8. Your rights""" to """Under Turkish KVKK (Law No. 6698) and, if you are in Europe, the GDPR, you have the right to request information about, correct, delete and object to the processing of your data. Because your game data exists only on your device, you can delete it directly on your device; for any other request, email us.""",
     """9. Changes""" to """We may update this policy from time to time. The current version is published in the App's Settings and on this page, and the last updated date is shown above.""",
     """10. Contact""" to """For questions, requests and complaints: baydemirel52@gmail.com"""
 )
