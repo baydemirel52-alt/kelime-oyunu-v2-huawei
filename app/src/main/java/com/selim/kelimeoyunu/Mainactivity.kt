@@ -129,7 +129,7 @@ class MainActivity : ComponentActivity() {
 
 // ==========================================
 // 0. YARDIMCI FONKSIYONLAR (Bu surumde reklam yok)
-// Reklamli surum icin git etiketi: reklamli-surum
+// Reklamli son surum: git commit d7a5030 (git checkout d7a5030 ile bakilabilir)
 // ==========================================
 const val CONTACT_EMAIL = "baydemirel52@gmail.com"
 
